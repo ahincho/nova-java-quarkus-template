@@ -1,3 +1,7 @@
+import java.nio.file.FileSystems
+import java.nio.file.Path
+import java.util.Properties
+
 /**
  * Root build file for a Nova Platform microservice instance generated
  * from the {@code nova-java-quarkus-template} repository.
@@ -38,7 +42,7 @@ allprojects {
     repositories {
         mavenLocal()
         mavenCentral()
-        // GitHub Packages of nova-java-notifications-quarkus-extension. Without
+        // GitHub Packages of nova-notifications-quarkus-extension. Without
         // this entry, ./gradlew build fails because Quarkus extension classes
         // (e.g. NotificationsConfig) are not mirrored on Maven Central — only
         // on the Nova Platform GitHub Packages registry.
@@ -73,17 +77,20 @@ subprojects {
  * `rename` task — the Nova Platform Gradle-template equivalent of the
  * Maven archetype's `archetype:generate` parameter substitution.
  *
- * <p>Replaces three placeholders in every tracked text file:
+ * <p>Replaces four placeholders in every tracked text file:
  * <ul>
  *   <li>{@code __GROUP__} → {@code -PgroupId}</li>
  *   <li>{@code __ARTIFACT__} → {@code -PartifactId}</li>
- *   <li>{@code __PACKAGE__} → {@code -Ppackage} (dots replaced with
- *       slashes for folder paths)</li>
+ *   <li>{@code __PACKAGE__} → {@code -Ppackage} (dots preserved for
+ *       Java {@code package} and {@code import} declarations)</li>
+ *   <li>{@code __PACKAGE_PATH__} → {@code -Ppackage} with dots replaced
+ *       with slashes (for folder paths inside source roots)</li>
  * </ul>
  *
  * <p>Only files under the project root are processed. The {@code build/},
- * {@code .gradle/}, and {@code gradle/wrapper/} directories are excluded
- * to avoid clobbering the local Gradle daemon's transient state.
+ * {@code .gradle/}, {@code gradle/wrapper/} directories and the
+ * {@code gradlew} / {@code gradlew.bat} scripts are excluded to avoid
+ * clobbering the local Gradle daemon's transient state.
  *
  * <p>The task rewrites {@code gradle.properties} with the new
  * {@code group}, {@code artifactId}, and {@code version} values so that
@@ -134,23 +141,24 @@ tasks.register("rename") {
     )
 
     doLast {
-        val rootDir = rootProject.projectDir.toPath()
-        var replacementsCount = 0
-        val filesTouched = mutableSetOf<java.nio.file.Path>()
+        val rootDir: Path = rootProject.projectDir.toPath()
+        val filesTouched = mutableSetOf<Path>()
 
         rootDir.toFile().walkTopDown()
             .filter { it.isFile }
             .filter { f ->
                 val rel = rootDir.relativize(f.toPath()).toString().replace('\\', '/')
-                textFilePatterns.any { glob ->
-                    java.nio.file.FileSystems.getDefault()
+                val matchesInclude = textFilePatterns.any { glob ->
+                    FileSystems.getDefault()
                         .getPathMatcher("glob:$glob")
                         .matches(java.nio.file.Paths.get(rel))
-                } && excludePatterns.none { ex ->
-                    java.nio.file.FileSystems.getDefault()
+                }
+                val matchesExclude = excludePatterns.any { ex ->
+                    FileSystems.getDefault()
                         .getPathMatcher("glob:$ex")
                         .matches(java.nio.file.Paths.get(rel))
                 }
+                matchesInclude && !matchesExclude
             }
             .forEach { f ->
                 val original = f.readText()
@@ -162,27 +170,22 @@ tasks.register("rename") {
                 if (rewritten != original) {
                     f.writeText(rewritten)
                     filesTouched.add(f.toPath())
-                    replacementsCount++
                 }
             }
 
         // Update gradle.properties with the new group / artifactId / version.
         val propsFile = rootDir.resolve("gradle.properties").toFile()
-        val props = java.util.Properties().apply {
+        val props = Properties().apply {
             propsFile.inputStream().use { stream -> load(stream) }
         }
         props.setProperty("group", groupProp)
         props.setProperty("artifactId", artifactProp)
         props.setProperty("version", "0.1.0-SNAPSHOT")
-        propsFile.outputStream().use { outStream ->
-            @Suppress("UNUSED_VARIABLE")
-            val unused = props
-            outStream.bufferedWriter().use { writer ->
-                writer.write("# Updated by nova-java-quarkus-template rename task\n")
-                writer.write("group=${groupProp}\n")
-                writer.write("artifactId=${artifactProp}\n")
-                writer.write("version=0.1.0-SNAPSHOT\n")
-            }
+        propsFile.outputStream().bufferedWriter().use { writer ->
+            writer.write("# Updated by nova-java-quarkus-template rename task\n")
+            writer.write("group=${groupProp}\n")
+            writer.write("artifactId=${artifactProp}\n")
+            writer.write("version=0.1.0-SNAPSHOT\n")
         }
 
         println()
