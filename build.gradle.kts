@@ -136,14 +136,21 @@ tasks.register("rename") {
     doLast {
         val rootDir = rootProject.projectDir.toPath()
         var replacementsCount = 0
-        var filesTouched = mutableSetOf<java.nio.file.Path>()
+        val filesTouched = mutableSetOf<java.nio.file.Path>()
 
         rootDir.toFile().walkTopDown()
             .filter { it.isFile }
             .filter { f ->
                 val rel = rootDir.relativize(f.toPath()).toString().replace('\\', '/')
-                textFilePatterns.any { glob -> java.nio.file.FileSystems.getDefault().getPathMatcher("glob:$glob").matches(java.nio.file.Paths.get(rel)) }
-                    && excludePatterns.none { ex -> java.nio.file.FileSystems.getDefault().getPathMatcher("glob:$ex").matches(java.nio.file.Paths.get(rel)) }
+                textFilePatterns.any { glob ->
+                    java.nio.file.FileSystems.getDefault()
+                        .getPathMatcher("glob:$glob")
+                        .matches(java.nio.file.Paths.get(rel))
+                } && excludePatterns.none { ex ->
+                    java.nio.file.FileSystems.getDefault()
+                        .getPathMatcher("glob:$ex")
+                        .matches(java.nio.file.Paths.get(rel))
+                }
             }
             .forEach { f ->
                 val original = f.readText()
@@ -161,12 +168,21 @@ tasks.register("rename") {
 
         // Update gradle.properties with the new group / artifactId / version.
         val propsFile = rootDir.resolve("gradle.properties").toFile()
-        val props = java.util.Properties().apply { propsFile.inputStream().use { load(it) } }
+        val props = java.util.Properties().apply {
+            propsFile.inputStream().use { stream -> load(stream) }
+        }
         props.setProperty("group", groupProp)
         props.setProperty("artifactId", artifactProp)
         props.setProperty("version", "0.1.0-SNAPSHOT")
-        propsFile.outputStream().use { out ->
-            props.store(out, "Updated by nova-java-quarkus-template rename task")
+        propsFile.outputStream().use { outStream ->
+            @Suppress("UNUSED_VARIABLE")
+            val unused = props
+            outStream.bufferedWriter().use { writer ->
+                writer.write("# Updated by nova-java-quarkus-template rename task\n")
+                writer.write("group=${groupProp}\n")
+                writer.write("artifactId=${artifactProp}\n")
+                writer.write("version=0.1.0-SNAPSHOT\n")
+            }
         }
 
         println()
