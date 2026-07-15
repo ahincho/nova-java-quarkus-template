@@ -1,0 +1,35 @@
+# Generic
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# VS Code
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local environment overrides (e.g. real SendGrid key)
+**/application-local.properties
+**/application-secrets.properties

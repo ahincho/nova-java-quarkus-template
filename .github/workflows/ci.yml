@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Self-test the template: simulate the post-clone flow by running
+# `gradle rename` with example coordinates, then `gradle build` and
+# `gradle :boot:test` to verify the renamed project actually compiles
+# and the @QuarkusTest boots successfully.
+jobs:
+  verify-template:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Setup Nova PAT (cross-repo reads)
+        env:
+          NOVA_RELEASE_PAT: ${{ secrets.NOVA_RELEASE_PAT }}
+        run: |
+          mkdir -p ~/.gradle
+          if [ -n "$NOVA_RELEASE_PAT" ]; then
+            echo "NOVA_RELEASE_PAT is available for GitHub Packages reads"
+          else
+            echo "::warning::NOVA_RELEASE_PAT not configured; cross-repo reads will fail"
+          fi
+
+      - name: Run rename with example coordinates
+        run: |
+          ./gradlew rename \
+            -PgroupId=__GROUP__ \
+            -PartifactId=__ARTIFACT__ \
+            -Ppackage=__PACKAGE__
+          echo "----- after rename: -----"
+          grep -E "^(group|artifactId|version)" gradle.properties || true
+          head -3 shared/src/main/java/__PACKAGE_PATH__/shared/domain/AggregateId.java
+
+      - name: Build (compile + test)
+        env:
+          NOVA_RELEASE_PAT: ${{ secrets.NOVA_RELEASE_PAT }}
+        run: ./gradlew check --no-daemon
+
+      - name: Quarkus build (fast-jar)
+        env:
+          NOVA_RELEASE_PAT: ${{ secrets.NOVA_RELEASE_PAT }}
+        run: ./gradlew :boot:quarkusBuild --no-daemon
