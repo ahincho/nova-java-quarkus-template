@@ -45,7 +45,10 @@ jobs:
             -Ppackage=com.example.my
           echo "----- after rename: -----"
           grep -E "^(group|artifactId|version)" gradle.properties || true
-          head -3 shared/src/main/java/com/example/my/shared/domain/AggregateId.java
+          # The rename task only rewrites file CONTENTS, not the source folder
+          # structure (the source folder still contains the literal __PACKAGE__
+          # segment so projects can re-run rename without re-cloning).
+          head -3 shared/src/main/java/__PACKAGE__/shared/domain/AggregateId.java
 
       - name: Build (compile + test)
         env:
