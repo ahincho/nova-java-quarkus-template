@@ -37,12 +37,12 @@ jobs:
       - name: Run rename with example coordinates
         run: |
           ./gradlew rename \
-            -PgroupId=__GROUP__ \
-            -PartifactId=__ARTIFACT__ \
-            -Ppackage=__PACKAGE__
+            -PgroupId=com.example \
+            -PartifactId=my-service \
+            -Ppackage=com.example.my
           echo "----- after rename: -----"
           grep -E "^(group|artifactId|version)" gradle.properties || true
-          head -3 shared/src/main/java/__PACKAGE_PATH__/shared/domain/AggregateId.java
+          head -3 shared/src/main/java/com/example/my/shared/domain/AggregateId.java
 
       - name: Build (compile + test)
         env:
