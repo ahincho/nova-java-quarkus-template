@@ -34,6 +34,9 @@ jobs:
             echo "::warning::NOVA_RELEASE_PAT not configured; cross-repo reads will fail"
           fi
 
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
       - name: Run rename with example coordinates
         run: |
           ./gradlew rename \
