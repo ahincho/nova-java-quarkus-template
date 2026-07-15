@@ -1,5 +1,6 @@
 import java.nio.file.FileSystems
 import java.nio.file.Path
+import java.nio.file.Paths
 import java.util.Properties
 
 /**
@@ -151,12 +152,12 @@ tasks.register("rename") {
                 val matchesInclude = textFilePatterns.any { glob ->
                     FileSystems.getDefault()
                         .getPathMatcher("glob:$glob")
-                        .matches(java.nio.file.Paths.get(rel))
+                        .matches(Paths.get(rel))
                 }
                 val matchesExclude = excludePatterns.any { ex ->
                     FileSystems.getDefault()
                         .getPathMatcher("glob:$ex")
-                        .matches(java.nio.file.Paths.get(rel))
+                        .matches(Paths.get(rel))
                 }
                 matchesInclude && !matchesExclude
             }
