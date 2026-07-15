@@ -174,7 +174,9 @@ tasks.register("rename") {
                 }
             }
 
-        // Update gradle.properties with the new group / artifactId / version.
+        // Update gradle.properties with the new group / artifactId / version
+        // while preserving any other keys the file already carries (Quarkus
+        // platform coords, Nova extension version, toolchain flags, etc.).
         val propsFile = rootDir.resolve("gradle.properties").toFile()
         val props = Properties().apply {
             propsFile.inputStream().use { stream -> load(stream) }
@@ -184,9 +186,9 @@ tasks.register("rename") {
         props.setProperty("version", "0.1.0-SNAPSHOT")
         propsFile.outputStream().bufferedWriter().use { writer ->
             writer.write("# Updated by nova-java-quarkus-template rename task\n")
-            writer.write("group=${groupProp}\n")
-            writer.write("artifactId=${artifactProp}\n")
-            writer.write("version=0.1.0-SNAPSHOT\n")
+            for ((key, value) in props.entries.sortedBy { (it.key as String) }) {
+                writer.write("$key=$value\n")
+            }
         }
 
         println()
