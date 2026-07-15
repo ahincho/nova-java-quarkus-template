@@ -3,6 +3,7 @@ package __PACKAGE__.boot.resource;
 import __PACKAGE__.product.application.CreateProductUseCase;
 import __PACKAGE__.product.domain.Product;
 import __PACKAGE__.product.domain.ProductId;
+import __PACKAGE__.product.domain.ProductRepository;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
@@ -25,6 +26,12 @@ import java.util.Map;
  * the domain (via {@link __PACKAGE__.product.domain.ProductName#of} and
  * {@link __PACKAGE__.product.domain.ProductPrice#of}), error mapping
  * lives in {@link DomainExceptionMapper}.
+ *
+ * <p>The use case is instantiated manually in the constructor instead
+ * of being injected via CDI — keeping the {@code product} module free
+ * of any {@code jakarta.enterprise} import. This matches the hexagonal
+ * rule: the bounded context stays framework-agnostic, and the boot
+ * module owns the wiring.
  */
 @Path("/api/products")
 @Consumes(MediaType.APPLICATION_JSON)
@@ -34,13 +41,15 @@ public final class ProductResource {
     private final CreateProductUseCase useCase;
 
     /**
-     * CDI-friendly constructor.
+     * CDI-friendly constructor: injects the {@link ProductRepository}
+     * bean (declared in the {@code boot} module's infrastructure layer)
+     * and constructs the use case around it.
      *
-     * @param useCaseArg the product use case, injected by Quarkus.
+     * @param repository the product repository injected by Quarkus.
      */
     @Inject
-    public ProductResource(final CreateProductUseCase useCaseArg) {
-        this.useCase = useCaseArg;
+    public ProductResource(final ProductRepository repository) {
+        this.useCase = new CreateProductUseCase(repository);
     }
 
     /**
