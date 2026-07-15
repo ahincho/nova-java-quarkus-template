@@ -21,10 +21,22 @@ plugins {
     id("io.quarkus")
 }
 
-val quarkusPlatformGroupId: String by project
-val quarkusPlatformArtifactId: String by project
-val quarkusPlatformVersion: String by project
-val novaNotificationsQuarkusExtensionVersion: String by project
+// Gradle properties from the root gradle.properties are propagated to
+// every subproject's Project instance. Use findProperty(...) for safe,
+// nullable access; required values are non-null at runtime because the
+// root build file is the single source of truth for these coordinates.
+val quarkusPlatformGroupId: String =
+    project.findProperty("quarkusPlatformGroupId") as String?
+        ?: error("quarkusPlatformGroupId is not defined in gradle.properties")
+val quarkusPlatformArtifactId: String =
+    project.findProperty("quarkusPlatformArtifactId") as String?
+        ?: error("quarkusPlatformArtifactId is not defined in gradle.properties")
+val quarkusPlatformVersion: String =
+    project.findProperty("quarkusPlatformVersion") as String?
+        ?: error("quarkusPlatformVersion is not defined in gradle.properties")
+val novaNotificationsQuarkusExtensionVersion: String =
+    project.findProperty("novaNotificationsQuarkusExtensionVersion") as String?
+        ?: error("novaNotificationsQuarkusExtensionVersion is not defined in gradle.properties")
 
 dependencies {
     implementation(project(":shared"))
