@@ -21,19 +21,24 @@ plugins {
     id("io.quarkus")
 }
 
+val quarkusPlatformGroupId: String by project
+val quarkusPlatformArtifactId: String by project
+val quarkusPlatformVersion: String by project
+val novaNotificationsQuarkusExtensionVersion: String by project
+
 dependencies {
     implementation(project(":shared"))
     implementation(project(":product"))
 
     // Quarkus core extensions (REST + health + JSON).
-    implementation(enforcedPlatform("${quarkusPlatformGroupId}:${quarkusPlatformArtifactId}:${quarkusPlatformVersion}"))
+    implementation(enforcedPlatform("$quarkusPlatformGroupId:$quarkusPlatformArtifactId:$quarkusPlatformVersion"))
     implementation("io.quarkus:quarkus-rest")
     implementation("io.quarkus:quarkus-rest-jackson")
     implementation("io.quarkus:quarkus-smallrye-health")
     implementation("io.quarkus:quarkus-arc")
 
     // Nova Platform notifications adapter (auto-wires NotificationFacade).
-    implementation("pe.edu.nova.java.starters:nova-notifications-quarkus-extension:${novaNotificationsQuarkusExtensionVersion}")
+    implementation("pe.edu.nova.java.starters:nova-notifications-quarkus-extension:$novaNotificationsQuarkusExtensionVersion")
 
     testImplementation("io.quarkus:quarkus-junit5")
     testImplementation("io.rest-assured:rest-assured:5.5.0")
