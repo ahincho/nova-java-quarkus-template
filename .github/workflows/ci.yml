@@ -4,58 +4,68 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
-# Self-test the template: simulate the post-clone flow by running
-# `gradle rename` with example coordinates, then `gradle build` and
-# `gradle :boot:test` to verify the renamed project actually compiles
-# and the @QuarkusTest boots successfully.
 jobs:
-  verify-template:
-    runs-on: ubuntu-24.04
+  verify-style:
+    name: ${{ matrix.style }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - style: layered
+            package: com.example.layered
+            groupId: com.example.layered
+            artifactId: layered-service
+          - style: hexagonal
+            package: com.example.hexagonal
+            groupId: com.example.hexagonal
+            artifactId: hexagonal-service
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 25
+      - name: Setup JDK 25 (Temurin)
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
           java-version: '25'
+          distribution: 'temurin'
 
-      - name: Setup Nova PAT (cross-repo reads)
-        env:
-          NOVA_RELEASE_PAT: ${{ secrets.NOVA_RELEASE_PAT }}
+      - name: Setup Gradle (cache wrapper)
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify template files
         run: |
-          mkdir -p ~/.gradle
-          if [ -n "$NOVA_RELEASE_PAT" ]; then
-            echo "NOVA_RELEASE_PAT is available for GitHub Packages reads"
-          else
-            echo "::warning::NOVA_RELEASE_PAT not configured; cross-repo reads will fail"
-          fi
+          ls -la
+          ls -la src-styles/${{ matrix.style }}/
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Run rename with example coordinates
+      - name: Rename to example coordinates (${{ matrix.style }})
         run: |
+          chmod +x gradlew
           ./gradlew rename \
-            -PgroupId=com.example \
-            -PartifactId=my-service \
-            -Ppackage=com.example.my
-          echo "----- after rename: -----"
-          grep -E "^(group|artifactId|version)" gradle.properties || true
-          # The rename task only rewrites file CONTENTS, not the source folder
-          # structure (the source folder still contains the literal __PACKAGE__
-          # segment so projects can re-run rename without re-cloning).
-          head -3 shared/src/main/java/__PACKAGE__/shared/domain/AggregateId.java
-
-      - name: Build (compile + test)
+              -PgroupId=${{ matrix.groupId }} \
+              -PartifactId=${{ matrix.artifactId }} \
+              -Ppackage=${{ matrix.package }} \
+              -Pstyle=${{ matrix.style }}
         env:
           NOVA_RELEASE_PAT: ${{ secrets.NOVA_RELEASE_PAT }}
-        run: ./gradlew check --no-daemon
 
-      - name: Quarkus build (fast-jar)
+      - name: Build + Test (${{ matrix.style }})
+        run: ./gradlew check
         env:
           NOVA_RELEASE_PAT: ${{ secrets.NOVA_RELEASE_PAT }}
-        run: ./gradlew :boot:quarkusBuild --no-daemon
+
+      - name: Build Quarkus Uber-Jar (${{ matrix.style }})
+        run: ./gradlew :boot:quarkusBuild
+        env:
+          NOVA_RELEASE_PAT: ${{ secrets.NOVA_RELEASE_PAT }}
+
+      - name: Report style
+        if: always()
+        run: |
+          echo "### Style: ${{ matrix.style }}" >> $GITHUB_STEP_SUMMARY
+          echo "Package: \`${{ matrix.package }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "Artifact: \`${{ matrix.artifactId }}\`" >> $GITHUB_STEP_SUMMARY

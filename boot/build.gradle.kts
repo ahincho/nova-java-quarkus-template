@@ -2,7 +2,7 @@
  * `boot` module — Quarkus entry point that wires the bounded contexts
  * (product, future ones) into a runnable microservice. It is the only
  * module that depends on Quarkus + the Nova Platform notifications
- * extension.
+ * extension + (when applicable) the Nova Platform architecture rules.
  *
  * <p>The module applies the {@code io.quarkus} plugin which:
  * <ul>
@@ -15,16 +15,18 @@
  * <p>Application configuration lives in {@code src/main/resources/application.properties}
  * and follows the Nova Platform convention: every notification channel
  * has a kebab-case property under the {@code nova.notifications.*} prefix.
+ *
+ * <p>The {@code nova-architecture-rules} test dependency is only added
+ * when the chosen style is {@code layered} or {@code clean}; for
+ * {@code hexagonal} the architectural rules are still encoded in the
+ * skeleton (domain does not depend on adapters, etc.) and an extra
+ * ArchUnit test will land in phase 2.
  */
 plugins {
     java
     id("io.quarkus")
 }
 
-// Gradle properties from the root gradle.properties are propagated to
-// every subproject's Project instance. Use findProperty(...) for safe,
-// nullable access; required values are non-null at runtime because the
-// root build file is the single source of truth for these coordinates.
 val quarkusPlatformGroupId: String =
     project.findProperty("quarkusPlatformGroupId") as String?
         ?: error("quarkusPlatformGroupId is not defined in gradle.properties")
@@ -37,10 +39,21 @@ val quarkusPlatformVersion: String =
 val novaNotificationsQuarkusExtensionVersion: String =
     project.findProperty("novaNotificationsQuarkusExtensionVersion") as String?
         ?: error("novaNotificationsQuarkusExtensionVersion is not defined in gradle.properties")
+val novaArchitectureRulesVersion: String =
+    project.findProperty("novaArchitectureRulesVersion") as String?
+        ?: error("novaArchitectureRulesVersion is not defined in gradle.properties")
+val styleProp: String =
+    (project.findProperty("style") as String?) ?: "layered"
 
 dependencies {
     implementation(project(":shared"))
-    implementation(project(":product"))
+
+    // Product module only exists in hexagonal/clean variants. The
+    // Layered variant keeps everything inside boot/ — see
+    // src-styles/layered/.
+    if (project.file("../product/build.gradle.kts").exists()) {
+        implementation(project(":product"))
+    }
 
     // Quarkus core extensions (REST + health + JSON).
     implementation(enforcedPlatform("$quarkusPlatformGroupId:$quarkusPlatformArtifactId:$quarkusPlatformVersion"))
@@ -54,6 +67,12 @@ dependencies {
 
     testImplementation("io.quarkus:quarkus-junit5")
     testImplementation("io.rest-assured:rest-assured:5.5.0")
+
+    // Architectural compliance via nova-architecture-rules. Always
+    // present at test scope — the LayeredArchitectureTest is activated
+    // by the ArchitectureTest class shipped in layered/clean styles.
+    // For hexagonal the class is currently a no-op stub until phase 2.
+    testImplementation("pe.edu.nova.java.libs:nova-architecture-rules:$novaArchitectureRulesVersion")
 }
 
 tasks.test {
