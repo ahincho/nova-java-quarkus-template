@@ -48,10 +48,10 @@ val styleProp: String =
 dependencies {
     implementation(project(":shared"))
 
-    // Product module only exists in hexagonal/clean variants. The
-    // Layered variant keeps everything inside boot/ — see
+    // Product module only carries sources in hexagonal/clean variants.
+    // The Layered variant keeps everything inside boot/ — see
     // src-styles/layered/.
-    if (project.file("../product/build.gradle.kts").exists()) {
+    if (styleProp == "hexagonal" || styleProp == "clean") {
         implementation(project(":product"))
     }
 

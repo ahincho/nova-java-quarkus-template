@@ -1,27 +1,19 @@
 /**
- * `product` module — example bounded context that consumes the
- * {@code shared} module. Demonstrates the canonical hexagonal split:
- * domain → application (use cases) → infrastructure (driven adapters).
+ * `product` module — Hexagonal / Clean only. Exists as a stub so
+ * Gradle's settings.gradle.kts can include it at config time. The
+ * actual Java sources live in
+ * {@code src-styles/hexagonal/product/src/main/java/__PACKAGE__/product/}
+ * and {@code src-styles/clean/product/src/main/java/__PACKAGE__/product/}
+ * respectively, and are copied here by the {@code rename} task in the
+ * root build file.
  *
- * <p>The module is intentionally framework-agnostic; it has no Quarkus
- * dependency. The boot module wires the application services into the
- * JAX-RS layer.
+ * <p>For the Layered style this module is intentionally empty: all
+ * code lives inside {@code boot/}.
  */
 plugins {
     java
-    `java-library`
 }
 
 dependencies {
     implementation(project(":shared"))
-
-    testImplementation("org.junit.jupiter:junit-jupiter:6.0.0")
-    testImplementation("org.assertj:assertj-core:3.26.3")
-}
-
-tasks.test {
-    useJUnitPlatform()
-    testLogging {
-        events("passed", "skipped", "failed")
-    }
 }
