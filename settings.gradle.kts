@@ -1,7 +1,11 @@
-rootProject.name = "__ARTIFACT__"
-
-// All modules are always included so Gradle can configure the build
-// before the `rename` task runs. For the Layered style the `:product`
-// module ships empty (stub) and the rename task populates it only
-// when -Pstyle=hexagonal or -Pstyle=clean is set.
-include("shared", "product", "boot")
+/**
+ * Settings for a Nova Platform microservice generated from the
+ * nova-java-quarkus-template.
+ *
+ * <p>Single-module layout: the generated service IS the root project.
+ * There is no boot/ / product/ / shared/ split — the archetype ships a
+ * flat, self-contained module whose name is the artifactId the developer
+ * passes to the {@code rename} task (-PartifactId). Until rename runs,
+ * the placeholder {@code __ARTIFACT__} is used.
+ */
+rootProject.name = providers.gradleProperty("artifactId").orElse("__ARTIFACT__").get()

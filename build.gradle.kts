@@ -7,168 +7,69 @@ import java.util.Properties
 
 /**
  * Root build file for a Nova Platform microservice instance generated
- * from the {@code nova-java-quarkus-template} repository.
+ * from the nova-java-quarkus-template.
  *
- * <p>Wires:
- * <ul>
- *   <li>the Quarkus platform BOM (3.33.2.1 LTS, same as
- *       {@code nova-quarkus-parent} in the Maven path),</li>
- *   <li>the {@code io.quarkus} Gradle plugin (applied per module),</li>
- *   <li>the {@code nova-notifications-quarkus-extension} and
- *       {@code nova-architecture-rules} GitHub Packages repositories
- *       (NOVA_RELEASE_PAT) so each subproject can resolve the
- *       Nova Platform JARs.</li>
- * </ul>
- *
- * <p>After instantiating the template, run:
+ * <p>Single-module layout: the generated service IS the root project.
+ * All Java toolchain, repository and Quarkus wiring lives in the
+ * convention plugins under buildSrc (nova.java-conventions,
+ * nova.repositories-conventions, nova.quarkus-conventions). This file
+ * only applies nova.quarkus-conventions, declares group/version and
+ * hosts the {@code rename} task used to instantiate the template.
  *
  * <pre>
  * ./gradlew rename \
  *     -PgroupId=com.acme \
  *     -PartifactId=my-service \
  *     -Ppackage=com.acme.my \
- *     -Pstyle=layered
+ *     -Ptype=service
  * </pre>
  *
- * <p>The {@code -Pstyle=} flag selects the architectural style
- * ({@code layered}, {@code clean}, or {@code hexagonal}). The task
- * copies the matching skeleton from {@code src-styles/<style>/} into
- * the active modules, rewrites the placeholders
- * ({@code __GROUP__}, {@code __ARTIFACT__}, {@code __PACKAGE__},
- * {@code __PACKAGE_PATH__}, {@code __STYLE__}) and updates
- * {@code gradle.properties}.
+ * <p>{@code -Ptype=} selects the archetype ({@code service}, {@code bff}
+ * or {@code acl}). Optionally {@code -PoutputDir=<path>} generates into
+ * a separate directory, leaving this template untouched.
  */
 plugins {
-    java
-    id("io.quarkus") version "3.33.2.1" apply false
+    id("nova.quarkus-conventions")
 }
 
-val novaReleasePat: String? = System.getenv("NOVA_RELEASE_PAT")
-val githubToken: String? = System.getenv("GITHUB_TOKEN")
-
-allprojects {
-    group = providers.gradleProperty("group").get()
-    version = providers.gradleProperty("version").get()
-
-    repositories {
-        mavenLocal()
-        mavenCentral()
-        // GitHub Packages of nova-notifications-quarkus-extension and
-        // nova-architecture-rules. Without these entries, ./gradlew
-        // build fails because neither artifact is mirrored on Maven
-        // Central — they only live on the Nova Platform GitHub
-        // Packages registry.
-        maven {
-            name = "GitHubPackages-NovaPlatform"
-            url = uri("https://maven.pkg.github.com/ahincho/nova-java-notifications-quarkus-extension")
-            content {
-                includeGroupByRegex("pe\\.edu\\.nova\\.java.*")
-            }
-            val token = novaReleasePat ?: githubToken
-            if (!token.isNullOrBlank()) {
-                credentials {
-                    username = System.getenv("GITHUB_ACTOR") ?: "x-access-token"
-                    password = token
-                }
-            }
-        }
-        maven {
-            name = "GitHubPackages-NovaArchitectureRules"
-            url = uri("https://maven.pkg.github.com/ahincho/nova-java-architecture-rules")
-            content {
-                includeGroupByRegex("pe\\.edu\\.nova\\.java.*")
-            }
-            val token = novaReleasePat ?: githubToken
-            if (!token.isNullOrBlank()) {
-                credentials {
-                    username = System.getenv("GITHUB_ACTOR") ?: "x-access-token"
-                    password = token
-                }
-            }
-        }
-    }
-}
-
-subprojects {
-    plugins.withType<JavaPlugin>().configureEach {
-        extensions.configure<JavaPluginExtension> {
-            toolchain {
-                languageVersion.set(JavaLanguageVersion.of(25))
-            }
-        }
-    }
-}
+group = providers.gradleProperty("group").get()
+version = providers.gradleProperty("version").get()
 
 /**
- * Architectural styles supported by the template. Each value maps to
- * a folder under {@code src-styles/} containing the skeleton that the
- * {@code rename} task will copy into the active modules.
+ * Archetypes supported by the template. Each value maps to a folder
+ * under {@code src-styles/} containing the skeleton that the
+ * {@code rename} task copies into the generated project.
  */
-enum class NovaStyle(val folder: String, val description: String) {
-    LAYERED("layered", "Traditional N-tier (controller/service/repository/entity/dto)"),
-    CLEAN("clean", "Uncle Bob Clean Architecture (4 concentric rings)"),
-    HEXAGONAL("hexagonal", "Ports & Adapters / Hexagonal (domain + application + adapters)");
+enum class NovaArchetype(val folder: String, val description: String) {
+    SERVICE("service", "Microservice — Hexagonal + DDD (domain + application + infrastructure)"),
+    BFF("bff", "Backend for Frontend — API composition over downstream services"),
+    ACL("acl", "Anti-Corruption Layer — isolates an external/legacy system");
 
     companion object {
-        fun fromIdentifier(id: String): NovaStyle =
-                values().firstOrNull { it.folder == id.lowercase() }
-                        ?: error("Unknown style '$id'. "
-                                + "Valid values: ${values().joinToString { it.folder }}")
+        fun fromIdentifier(id: String): NovaArchetype =
+            values().firstOrNull { it.folder == id.lowercase() }
+                ?: error("Unknown type '$id'. "
+                        + "Valid values: ${values().joinToString { it.folder }}")
     }
 }
 
 /**
- * `rename` task — the Nova Platform Gradle-template equivalent of the
- * Maven archetype's `archetype:generate` parameter substitution.
+ * `rename` task — instantiates the template into a concrete project.
  *
- * <p>Accepts four parameters:
+ * <p>All parameter reads and the -P validations live INSIDE doLast, so
+ * a normal `./gradlew build` never evaluates them — only an explicit
+ * `./gradlew rename ...` does.
+ *
+ * <p>Parameters:
  * <ul>
  *   <li>{@code -PgroupId=<your.group>}</li>
  *   <li>{@code -PartifactId=<your-artifact>}</li>
  *   <li>{@code -Ppackage=<your.java.package>}</li>
- *   <li>{@code -Pstyle=<layered|clean|hexagonal>}</li>
+ *   <li>{@code -Ptype=<service|bff|acl>} (defaults to service)</li>
+ *   <li>{@code -PoutputDir=<path>} (optional)</li>
  * </ul>
- *
- * <p>The task:
- * <ol>
- *   <li>reads the chosen style and resolves the source skeleton under
- *       {@code src-styles/<style>/},</li>
- *   <li>wipes the current skeleton out of {@code boot/src/main/java/}
- *       and {@code boot/src/test/java/} (preserving
- *       {@code application.properties}),</li>
- *   <li>copies the matching skeleton into place,</li>
- *   <li>runs the placeholder substitution on every tracked text file
- *       ({@code __GROUP__}, {@code __ARTIFACT__}, {@code __PACKAGE__},
- *       {@code __PACKAGE_PATH__}, {@code __STYLE__}),</li>
- *   <li>updates {@code gradle.properties} with the new coordinates.</li>
- * </ol>
- *
- * <p>Only files under the project root are processed. The
- * {@code build/}, {@code .gradle/}, {@code gradle/wrapper/} and
- * {@code src-styles/} directories and the {@code gradlew} /
- * {@code gradlew.bat} scripts are excluded to avoid clobbering the
- * local Gradle daemon's transient state.
- *
- * <p>Run once after cloning the template:
- *
- * <pre>
- * ./gradlew rename -PgroupId=com.acme -PartifactId=my-service \
- *     -Ppackage=com.acme.my -Pstyle=layered
- * </pre>
  */
 tasks.register("rename") {
-    val groupProp: String = (project.findProperty("groupId") as String?)
-        ?: error("Missing -PgroupId=<your.group>")
-    val artifactProp: String = (project.findProperty("artifactId") as String?)
-        ?: error("Missing -PartifactId=<your-artifact>")
-    val packageProp: String = (project.findProperty("package") as String?)
-        ?: error("Missing -Ppackage=<your.java.package>")
-    val styleProp: String = (project.findProperty("style") as String?)
-        ?: "layered"
-    val style: NovaStyle = NovaStyle.fromIdentifier(styleProp)
-
-    val packagePath = packageProp.replace('.', '/')
-
     val textFilePatterns = listOf(
         "**/*.kt",
         "**/*.kts",
@@ -185,6 +86,8 @@ tasks.register("rename") {
 
     val excludePatterns = listOf(
         "build/**",
+        "buildSrc/build/**",
+        "buildSrc/.gradle/**",
         ".gradle/**",
         "gradle/wrapper/**",
         "src-styles/**",
@@ -193,49 +96,84 @@ tasks.register("rename") {
     )
 
     doLast {
-        val rootDir: Path = rootProject.projectDir.toPath()
+        // Parameter reads live here (not at configuration time) so that a
+        // plain build never triggers these validations.
+        val groupProp: String = (project.findProperty("groupId") as String?)
+            ?: error("Missing -PgroupId=<your.group>")
+        val artifactProp: String = (project.findProperty("artifactId") as String?)
+            ?: error("Missing -PartifactId=<your-artifact>")
+        val packageProp: String = (project.findProperty("package") as String?)
+            ?: error("Missing -Ppackage=<your.java.package>")
+        val typeProp: String = (project.findProperty("type") as String?)
+            ?: "service"
+        val archetype: NovaArchetype = NovaArchetype.fromIdentifier(typeProp)
+        val outputDirProp: String? = project.findProperty("outputDir") as String?
+        val packagePath = packageProp.replace('.', '/')
+
+        val sourceRoot: Path = rootProject.projectDir.toPath()
+
+        // Directory segment names that must never be copied to the output
+        // dir — Gradle's transient state at ANY depth (including inside
+        // buildSrc) holds locks that would break the copy.
+        val skipSegments = setOf("build", ".gradle", ".git")
+
+        // Resolve the working root. With -PoutputDir the template is
+        // copied to the target first (skipping transient state at any
+        // level) and the rename operates on that copy; otherwise it runs
+        // in place.
+        val rootDir: Path = if (outputDirProp != null) {
+            val target = Paths.get(outputDirProp).toAbsolutePath().normalize()
+            if (target == sourceRoot.toAbsolutePath().normalize()) {
+                error("-PoutputDir cannot be the template directory itself")
+            }
+            Files.walk(sourceRoot).forEach { src ->
+                val rel = sourceRoot.relativize(src)
+                // Skip if ANY path segment is a transient dir (build,
+                // .gradle, .git) — at root or nested (e.g. buildSrc/.gradle).
+                val skip = (0 until rel.nameCount).any {
+                    skipSegments.contains(rel.getName(it).toString())
+                }
+                if (skip) return@forEach
+                val dst = target.resolve(rel.toString())
+                if (Files.isDirectory(src)) {
+                    Files.createDirectories(dst)
+                } else {
+                    Files.createDirectories(dst.parent)
+                    Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING)
+                }
+            }
+            println("   outputDir = $target (generated into a copy, template left intact)")
+            target
+        } else {
+            sourceRoot
+        }
+
         val filesTouched = mutableSetOf<Path>()
 
-        // Step 1: copy the matching skeleton into boot/src/{main,test}/java
-        val styleSource: Path = rootDir.resolve("src-styles/${style.folder}")
-        if (!Files.isDirectory(styleSource)) {
-            error("Style skeleton not found: $styleSource")
-        }
-        val bootMainJava = rootDir.resolve("boot/src/main/java/__PACKAGE__")
-        val bootTestJava = rootDir.resolve("boot/src/test/java/__PACKAGE__")
-        val productMainJava = rootDir.resolve("product/src/main/java/__PACKAGE__")
-        val sharedMainJava = rootDir.resolve("shared/src/main/java/__PACKAGE__")
-
-        // Wipe previously installed skeletons (Hexagonal variant may have shipped
-        // with product/ and shared/ — keep shared/ contents if it exists, since
-        // it's style-agnostic).
-        deleteRecursively(bootMainJava)
-        deleteRecursively(bootTestJava)
-        deleteRecursively(productMainJava)
-
-        // Copy style-specific sources for boot/.
-        copyRecursively(styleSource.resolve("boot/src/main/java/__PACKAGE__"), bootMainJava)
-        copyRecursively(styleSource.resolve("boot/src/test/java/__PACKAGE__"), bootTestJava)
-
-        // Copy style-specific resources for boot/.
-        val styleResources = styleSource.resolve("boot/src/main/resources")
-        if (Files.isDirectory(styleResources)) {
-            val bootResources = rootDir.resolve("boot/src/main/resources")
-            deleteRecursively(bootResources)
-            copyRecursively(styleResources, bootResources)
+        // Step 1: copy the chosen archetype skeleton into src/main + src/test.
+        val archetypeSource: Path = rootDir.resolve("src-styles/${archetype.folder}")
+        if (!Files.isDirectory(archetypeSource)) {
+            error("Archetype skeleton not found: $archetypeSource")
         }
 
-        // Copy style-specific sources for product/ (only hexagonal/clean have it).
-        val styleProduct = styleSource.resolve("product/src/main/java/__PACKAGE__")
-        if (Files.isDirectory(styleProduct)) {
-            copyRecursively(styleProduct, productMainJava)
-        }
+        val mainJava = rootDir.resolve("src/main/java/__PACKAGE__")
+        val testJava = rootDir.resolve("src/test/java/__PACKAGE__")
+        val mainResources = rootDir.resolve("src/main/resources")
 
-        // Restore shared/ skeleton — it's style-agnostic and ships at the root.
-        val sharedSource = rootDir.resolve("src-styles/shared-resources/java/__PACKAGE__")
-        if (Files.isDirectory(sharedSource)) {
-            deleteRecursively(sharedMainJava)
-            copyRecursively(sharedSource, sharedMainJava)
+        // Wipe any previously installed skeleton so re-running rename with
+        // a different type produces a clean tree.
+        deleteRecursively(mainJava)
+        deleteRecursively(testJava)
+
+        // Copy archetype sources.
+        copyRecursively(archetypeSource.resolve("src/main/java/__PACKAGE__"), mainJava)
+        copyRecursively(archetypeSource.resolve("src/test/java/__PACKAGE__"), testJava)
+
+        // Copy archetype resources (application.properties, etc.).
+        val archetypeResources = archetypeSource.resolve("src/main/resources")
+        if (Files.isDirectory(archetypeResources)) {
+            deleteRecursively(mainResources)
+            copyRecursively(archetypeResources, mainResources)
         }
 
         // Step 2: placeholder substitution on every tracked text file.
@@ -262,16 +200,21 @@ tasks.register("rename") {
                     .replace("__ARTIFACT__", artifactProp)
                     .replace("__PACKAGE__", packageProp)
                     .replace("__PACKAGE_PATH__", packagePath)
-                    .replace("__STYLE__", style.folder)
+                    .replace("__TYPE__", archetype.folder)
                 if (rewritten != original) {
                     f.writeText(rewritten)
                     filesTouched.add(f.toPath())
                 }
             }
 
-        // Step 3: update gradle.properties with the new coordinates while
-        // preserving any other keys the file already carries (Quarkus
-        // platform coords, Nova extension version, toolchain flags, etc.).
+        // Step 3: rename the placeholder package directories to the real
+        // package path (e.g. __PACKAGE__ -> pe/edu/utp/nova).
+        renamePackageDir(rootDir.resolve("src/main/java"), packagePath)
+        renamePackageDir(rootDir.resolve("src/test/java"), packagePath)
+
+        // Step 4: update gradle.properties with the new coordinates while
+        // preserving the other keys (Quarkus platform coords, Nova
+        // versions, toolchain flags).
         val propsFile = rootDir.resolve("gradle.properties").toFile()
         val props = Properties().apply {
             propsFile.inputStream().use { stream -> load(stream) }
@@ -279,7 +222,7 @@ tasks.register("rename") {
         props.setProperty("group", groupProp)
         props.setProperty("artifactId", artifactProp)
         props.setProperty("version", "0.1.0-SNAPSHOT")
-        props.setProperty("style", style.folder)
+        props.setProperty("type", archetype.folder)
         propsFile.outputStream().bufferedWriter().use { writer ->
             writer.write("# Updated by nova-java-quarkus-template rename task\n")
             for ((key, value) in props.entries.sortedBy { (it.key as String) }) {
@@ -292,14 +235,14 @@ tasks.register("rename") {
         println("   groupId   = $groupProp")
         println("   artifactId= $artifactProp")
         println("   package   = $packageProp ($packagePath)")
-        println("   style     = ${style.folder} (${style.description})")
+        println("   type      = ${archetype.folder} (${archetype.description})")
         println("   files touched: ${filesTouched.size}")
         println("   gradle.properties updated with new coordinates.")
         println()
         println("Next steps:")
-        println("  1. git add -A && git commit -m \"rename: $artifactProp (${style.folder})\"")
+        println("  1. git add -A && git commit -m \"rename: $artifactProp (${archetype.folder})\"")
         println("  2. ./gradlew build")
-        println("  3. ./gradlew :boot:quarkusDev")
+        println("  3. ./gradlew quarkusDev")
     }
 }
 
@@ -327,4 +270,18 @@ fun copyRecursively(source: Path, target: Path) {
             Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING)
         }
     }
+}
+
+/**
+ * Moves the contents of {@code <sourceRoot>/__PACKAGE__} into
+ * {@code <sourceRoot>/<packagePath>} and deletes the placeholder dir,
+ * so the on-disk package matches the declared Java package.
+ */
+fun renamePackageDir(sourceRoot: Path, packagePath: String) {
+    val placeholder = sourceRoot.resolve("__PACKAGE__")
+    if (!Files.isDirectory(placeholder)) return
+    val target = sourceRoot.resolve(packagePath)
+    Files.createDirectories(target)
+    copyRecursively(placeholder, target)
+    deleteRecursively(placeholder)
 }
