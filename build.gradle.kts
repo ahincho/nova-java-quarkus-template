@@ -18,15 +18,19 @@ import java.util.Properties
  *
  * <pre>
  * ./gradlew rename \
- *     -PgroupId=com.acme \
- *     -PartifactId=my-service \
- *     -Ppackage=com.acme.my \
+ *     -PgroupId=pe.utp.nova \
+ *     -PartifactId=ms-academic-course \
+ *     -Ppackage=pe.utp.nova \
+ *     -Pdomain=academic \
  *     -Ptype=service
  * </pre>
  *
  * <p>{@code -Ptype=} selects the archetype ({@code service}, {@code bff}
- * or {@code acl}). Optionally {@code -PoutputDir=<path>} generates into
- * a separate directory, leaving this template untouched.
+ * or {@code acl}). {@code -Pdomain=} is the microservice / bounded
+ * context name (CoRD style, e.g. pricing) — it becomes the
+ * {@code __DOMAIN__} package that wraps the domain code. Optionally
+ * {@code -PoutputDir=<path>} generates into a separate directory,
+ * leaving this template untouched.
  */
 plugins {
     id("nova.quarkus-conventions")
@@ -41,7 +45,7 @@ version = providers.gradleProperty("version").get()
  * {@code rename} task copies into the generated project.
  */
 enum class NovaArchetype(val folder: String, val description: String) {
-    SERVICE("service", "Microservice — Hexagonal + DDD (domain + application + infrastructure)"),
+    SERVICE("service", "Microservice — Hexagonal + DDD (adapter/domain/port/service under a domain package)"),
     BFF("bff", "Backend for Frontend — API composition over downstream services"),
     ACL("acl", "Anti-Corruption Layer — isolates an external/legacy system");
 
@@ -65,6 +69,8 @@ enum class NovaArchetype(val folder: String, val description: String) {
  *   <li>{@code -PgroupId=<your.group>}</li>
  *   <li>{@code -PartifactId=<your-artifact>}</li>
  *   <li>{@code -Ppackage=<your.java.package>}</li>
+ *   <li>{@code -Pdomain=<domain-name>} — the bounded-context package
+ *       (e.g. academic); required.</li>
  *   <li>{@code -Ptype=<service|bff|acl>} (defaults to service)</li>
  *   <li>{@code -PoutputDir=<path>} (optional)</li>
  * </ul>
@@ -104,6 +110,10 @@ tasks.register("rename") {
             ?: error("Missing -PartifactId=<your-artifact>")
         val packageProp: String = (project.findProperty("package") as String?)
             ?: error("Missing -Ppackage=<your.java.package>")
+        val domainProp: String = (project.findProperty("domain") as String?)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: error("Missing -Pdomain=<domain-name> (the bounded-context package, e.g. academic)")
         val typeProp: String = (project.findProperty("type") as String?)
             ?: "service"
         val archetype: NovaArchetype = NovaArchetype.fromIdentifier(typeProp)
@@ -128,8 +138,6 @@ tasks.register("rename") {
             }
             Files.walk(sourceRoot).forEach { src ->
                 val rel = sourceRoot.relativize(src)
-                // Skip if ANY path segment is a transient dir (build,
-                // .gradle, .git) — at root or nested (e.g. buildSrc/.gradle).
                 val skip = (0 until rel.nameCount).any {
                     skipSegments.contains(rel.getName(it).toString())
                 }
@@ -200,6 +208,7 @@ tasks.register("rename") {
                     .replace("__ARTIFACT__", artifactProp)
                     .replace("__PACKAGE__", packageProp)
                     .replace("__PACKAGE_PATH__", packagePath)
+                    .replace("__DOMAIN__", domainProp)
                     .replace("__TYPE__", archetype.folder)
                 if (rewritten != original) {
                     f.writeText(rewritten)
@@ -207,12 +216,18 @@ tasks.register("rename") {
                 }
             }
 
-        // Step 3: rename the placeholder package directories to the real
-        // package path (e.g. __PACKAGE__ -> pe/edu/utp/nova).
+        // Step 3: rename placeholder DOMAIN directories to the domain name
+        // (e.g. __DOMAIN__ -> academic). Done before the package rename so
+        // the domain folder ends up under the real package path.
+        renameDirPlaceholder(rootDir.resolve("src/main/java/__PACKAGE__"), "__DOMAIN__", domainProp)
+        renameDirPlaceholder(rootDir.resolve("src/test/java/__PACKAGE__"), "__DOMAIN__", domainProp)
+
+        // Step 4: rename the placeholder package directories to the real
+        // package path (e.g. __PACKAGE__ -> pe/utp/nova).
         renamePackageDir(rootDir.resolve("src/main/java"), packagePath)
         renamePackageDir(rootDir.resolve("src/test/java"), packagePath)
 
-        // Step 4: update gradle.properties with the new coordinates while
+        // Step 5: update gradle.properties with the new coordinates while
         // preserving the other keys (Quarkus platform coords, Nova
         // versions, toolchain flags).
         val propsFile = rootDir.resolve("gradle.properties").toFile()
@@ -222,6 +237,7 @@ tasks.register("rename") {
         props.setProperty("group", groupProp)
         props.setProperty("artifactId", artifactProp)
         props.setProperty("version", "0.1.0-SNAPSHOT")
+        props.setProperty("domain", domainProp)
         props.setProperty("type", archetype.folder)
         propsFile.outputStream().bufferedWriter().use { writer ->
             writer.write("# Updated by nova-java-quarkus-template rename task\n")
@@ -235,12 +251,13 @@ tasks.register("rename") {
         println("   groupId   = $groupProp")
         println("   artifactId= $artifactProp")
         println("   package   = $packageProp ($packagePath)")
+        println("   domain    = $domainProp")
         println("   type      = ${archetype.folder} (${archetype.description})")
         println("   files touched: ${filesTouched.size}")
         println("   gradle.properties updated with new coordinates.")
         println()
         println("Next steps:")
-        println("  1. git add -A && git commit -m \"rename: $artifactProp (${archetype.folder})\"")
+        println("  1. git add -A && git commit -m \"rename: $artifactProp ($domainProp, ${archetype.folder})\"")
         println("  2. ./gradlew build")
         println("  3. ./gradlew quarkusDev")
     }
@@ -270,6 +287,20 @@ fun copyRecursively(source: Path, target: Path) {
             Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING)
         }
     }
+}
+
+/**
+ * Renames a single placeholder directory (e.g. {@code __DOMAIN__}) to a
+ * real name within {@code parent}, moving its contents. No-op if the
+ * placeholder directory does not exist.
+ */
+fun renameDirPlaceholder(parent: Path, placeholderName: String, realName: String) {
+    val placeholder = parent.resolve(placeholderName)
+    if (!Files.isDirectory(placeholder)) return
+    val target = parent.resolve(realName)
+    Files.createDirectories(target)
+    copyRecursively(placeholder, target)
+    deleteRecursively(placeholder)
 }
 
 /**
